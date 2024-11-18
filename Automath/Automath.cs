@@ -17,6 +17,16 @@ namespace Automath
         public bool isCorrectedInisilize=true;
 
         public Automath() { }
+        public Automath(AutomathType type, string[] states, string[] alphavite, string initialState, string[] finalStates, Dictionary<string, List<string>> transitions, bool isCorrectedInisilize)
+        {
+            this.type = type;
+            this.states = states;
+            this.alphavite = alphavite;
+            this.initialState = initialState;
+            this.finalStates = finalStates;
+            this.transitions = transitions;
+            this.isCorrectedInisilize = isCorrectedInisilize;
+        }
         public Automath(string filepath) 
         {
             using(StreamReader file=new StreamReader(filepath))
@@ -97,11 +107,13 @@ namespace Automath
 
                 Console.WriteLine("Таблица переходов автомата:");
 
-                int maxLength = MaxLengthForTable();
+                int maxLength = transitions.Values
+                           .SelectMany(states => states)
+                           .Max(state => state.Length);
 
                 for (int i = 0; i < states.Length + 1; i++)
                 {
-                    if (i == 0) // для первой строки
+                    if (i == 0) 
                     {
                         for (int j = 0; j < alphavite.Length + 1; j++)
                         {
@@ -109,7 +121,7 @@ namespace Automath
                             else Console.Write($"|{{0, {-maxLength - 1}}}", alphavite[j - 1]);
                         }
                     }
-                    else // для остальных строк
+                    else 
                     {
                         for (int j = 0; j < alphavite.Length + 1; j++)
                         {
@@ -136,79 +148,241 @@ namespace Automath
                 }
             }
         }
-
-        private int MaxLengthForTable()
+        public void ProcessInputWord(string word)
         {
-            int maxLength = 0;
-            foreach (var item in transitions.Values)
+            switch (type)
             {
-                foreach (string state in item)
-                {
-                    if (maxLength < state.Length) maxLength = state.Length;
-                }
+                case AutomathType.DKA:
+                    ProcessInputWordDKA(word);
+                    break;
+                case AutomathType.NKA:
+                    ProcessInputWordNKA(word);
+                    break;
+                case AutomathType.NKAe:
+                    ProcessInputWordEpsilonNFA(word);
+                    break;
+                default:
+                    Console.WriteLine("У автомата задан неизвестный тип автомата");
+                    break;
             }
-            return maxLength;
+
         }
-
-        public void TryInputWord(string word)
+        public void ProcessInputWordDKA(string word)
         {
-            bool isOk = false;
-            if (isCorrectedInisilize)
+            if (!isCorrectedInisilize)
             {
-                bool EmergencyBreak = false;
-                string currentState = initialState;
-                List<string> inputsList = alphavite.ToList();
+                Console.WriteLine("Ошибка: автомат не был проинициализирован.");
+                return;
+            }
 
-                Console.WriteLine($"\nТекущее состояние: {currentState}");
+            string currentState = initialState; 
+            Console.WriteLine($"\nНачальное состояние: {currentState}");
 
-                foreach (char symbol in word)
+            foreach (char symbol in word)
+            {
+                string symbolStr = symbol.ToString();
+                if (!alphavite.Contains(symbolStr))
                 {
-                    if (alphavite.Contains(symbol.ToString()))
-                    {
-                        Console.WriteLine($"Считан символ '{symbol}'");
-                        string prevState = currentState;
-                        currentState = transitions[currentState][inputsList.IndexOf(symbol.ToString())];
-                        // Обработка неопределённого состояния
-                        if (currentState == "~")
-                        {
-                            Console.WriteLine("Запрашиваемое входным символом состояние не определено.\n" +
-                                $"Из состояния {prevState} нет перехода по символу {symbol}");
-                            Console.ResetColor();
-                            EmergencyBreak = true;
-                            break;
-                        }
-                        Console.WriteLine($" - Текущее состояние теперь {currentState}");
-                    }
-                    else
-                    {
-                        Console.WriteLine($"Ошибка! Считанный символ '{symbol}' не входит в алфавит!");
-                        Console.ResetColor();
-                        EmergencyBreak = true;
-                        break;
-                    }
+                    Console.WriteLine($"Ошибка: символ '{symbol}' отсутствует в алфавите.");
+                    return;
                 }
 
-                if (!EmergencyBreak)
+                if (!transitions.TryGetValue(currentState, out var stateTransitions))
                 {
-                    Console.WriteLine($"\nВходное слово успешно прочитано. Автомат пришёл в состояние {currentState}");
-                    if (finalStates.ToList().Contains(currentState))
-                    {
-                        Console.WriteLine($"Состояние {currentState} входит в число финальных состояний.");
-                        Console.ResetColor();
-                        isOk = true;
-                    }
-                    else
-                    {
-                        Console.WriteLine($"Состояние {currentState} не входит в число финальных состояний.");
-                        Console.ResetColor();
-                    }
+                    Console.WriteLine($"Ошибка: для состояния '{currentState}' не определены переходы.");
+                    return;
                 }
+
+                int symbolIndex = new List<string>(alphavite).IndexOf(symbolStr);
+                if (symbolIndex >= stateTransitions.Count)
+                {
+                    Console.WriteLine($"Ошибка: для состояния '{currentState}' не существует перехода по символу '{symbol}'.");
+                    return;
+                }
+
+                string nextState = stateTransitions[symbolIndex];
+                if (nextState == "~")
+                {
+                    Console.WriteLine($"Ошибка: переход из состояния '{currentState}' по символу '{symbol}' не определён.");
+                    return;
+                }
+
+                Console.WriteLine($"Символ '{symbol}' перевёл автомат из состояния '{currentState}' в '{nextState}'.");
+                currentState = nextState;
+            }
+
+            Console.WriteLine($"\nКонечное состояние после обработки слова: {currentState}");
+
+            if (finalStates.Contains(currentState))
+            {
+                Console.WriteLine($"Состояние '{currentState}' является конечным. Слово принимается автоматом.");
             }
             else
             {
-                Console.WriteLine("Операция 'ProcessInputLine' не может быть выполнена: автомат не проинициализирован.");
-                Console.ResetColor();
+                Console.WriteLine($"Состояние '{currentState}' не является конечным. Слово не принимается автоматом.");
+            }
+        }   
+
+        private bool ProcessInputWordNKA(string word)
+        {
+            if (!isCorrectedInisilize)
+            {
+                Console.WriteLine("Ошибка: автомат не был проинициализирован.");
+                return false;
+            }
+
+
+            HashSet<string> currentStates = new() { initialState };
+            Console.WriteLine($"\nНачальное состояние: {initialState}");
+
+            foreach (char symbol in word)
+            {
+                string symbolStr = symbol.ToString();
+
+                if (!alphavite.Contains(symbolStr))
+                {
+                    Console.WriteLine($"Ошибка: символ '{symbol}' отсутствует в алфавите.");
+                    return false;
+                }
+
+                HashSet<string> nextStates = new();
+
+                foreach (string state in currentStates)
+                {
+                    if (!transitions.TryGetValue(state, out var stateTransitions))
+                    {
+                        Console.WriteLine($"Ошибка: для состояния '{state}' не определены переходы.");
+                        continue;
+                    }
+
+                    int symbolIndex = alphavite.ToList().IndexOf(symbolStr);
+                    if (symbolIndex >= stateTransitions.Count)
+                    {
+                        Console.WriteLine($"Ошибка: для состояния '{state}' не существует перехода по символу '{symbol}'.");
+                        continue;
+                    }
+
+                    string transition = stateTransitions[symbolIndex];
+
+                    if (transition.Contains("{"))
+                    {
+                        transition = transition.Trim('{', '}');
+                        foreach (string nextState in transition.Split(','))
+                        {
+                            if (nextState != "~") 
+                                nextStates.Add(nextState);
+                        }
+                    }
+                    else if (transition != "~")
+                    {
+                        nextStates.Add(transition);
+                    }
+                }
+
+                if (nextStates.Count == 0)
+                {
+                    Console.WriteLine($"Ошибка: автомат застрял, некуда переходить по символу '{symbol}'.");
+                    return false;
+                }
+
+                currentStates = nextStates; 
+                Console.WriteLine($"Символ '{symbol}' перевёл автомат в состояния: {string.Join(", ", currentStates)}");
+            }
+
+            Console.WriteLine($"\nТекущие состояния после обработки слова: {string.Join(", ", currentStates)}");
+
+            if (currentStates.Overlaps(finalStates))
+            {
+                Console.WriteLine($"Одно из состояний ({string.Join(", ", currentStates.Intersect(finalStates))}) является конечным. Слово принимается автоматом.");
+                return true;
+            }
+            else
+            {
+                Console.WriteLine($"Ни одно из состояний ({string.Join(", ", currentStates)}) не является конечным. Слово не принимается автоматом.");
+                return false;
             }
         }
+        private bool ProcessInputWordEpsilonNFA(string word)
+        {
+            if (!isCorrectedInisilize)
+            {
+                Console.WriteLine("Ошибка: автомат не был проинициализирован.");
+                return false;
+            }
+
+            HashSet<string> currentStates = GetEpsilonClosure(new HashSet<string> { initialState });
+            Console.WriteLine($"Начальное ε-замыкание: {string.Join(", ", currentStates)}");
+
+            foreach (char symbol in word)
+            {
+                string symbolStr = symbol.ToString();
+                if (!alphavite.Contains(symbolStr))
+                {
+                    Console.WriteLine($"Ошибка: символ '{symbol}' отсутствует в алфавите.");
+                    return false;
+                }
+
+                HashSet<string> nextStates = new();
+                foreach (string state in currentStates)
+                {
+                    if (transitions.TryGetValue(state, out var stateTransitions))
+                    {
+                        int symbolIndex = alphavite.ToList().IndexOf(symbolStr);
+                        if (symbolIndex < stateTransitions.Count)
+                        {
+                            string transition = stateTransitions[symbolIndex];
+                            if (transition != "~")
+                            {
+                                foreach (string nextState in transition.Trim('{', '}').Split(','))
+                                    nextStates.Add(nextState);
+                            }
+                        }
+                    }
+                }
+
+                currentStates = GetEpsilonClosure(nextStates);
+                Console.WriteLine($"После символа '{symbol}': {string.Join(", ", currentStates)}");
+            }
+
+            if (currentStates.Overlaps(finalStates))
+            {
+                Console.WriteLine($"Слово принимается автоматом. Достигнуты конечные состояния: {string.Join(", ", currentStates.Intersect(finalStates))}");
+                return true;
+            }
+            else
+            {
+                Console.WriteLine("Слово не принимается автоматом.");
+                return false;
+            }
+        }
+
+        private HashSet<string> GetEpsilonClosure(HashSet<string> states)
+        {
+            Stack<string> stack = new(states);
+            HashSet<string> epsilonClosure = new(states);
+
+            while (stack.Count > 0)
+            {
+                string state = stack.Pop();
+                if (transitions.TryGetValue(state, out var stateTransitions))
+                {
+                    int epsilonIndex = alphavite.ToList().IndexOf("ε");
+                    if (epsilonIndex < stateTransitions.Count)
+                    {
+                        string transition = stateTransitions[epsilonIndex];
+                        if (transition != "~")
+                        {
+                            foreach (string nextState in transition.Trim('{', '}').Split(','))
+                            {
+                                if (epsilonClosure.Add(nextState)) 
+                                    stack.Push(nextState);
+                            }
+                        }
+                    }
+                }
+            }
+            return epsilonClosure;
+        }
+
     }
 }
