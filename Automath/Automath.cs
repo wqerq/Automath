@@ -47,6 +47,10 @@ namespace Automath
                         }
                     states = file.ReadLine().Trim('Q',':').Split(",").Select(s => s.Trim()).ToArray();
                     alphavite= file.ReadLine().Trim('S', ':').Split(",").Select(s => s.Trim()).ToArray();
+                    if(type== AutomathType.NKAe)
+                    {
+                        alphavite = alphavite.Append("eps").ToArray();
+                    }
                     initialState = file.ReadLine().Trim('Q','0',':',' ');
                     finalStates= file.ReadLine().Trim('F', ':').Split(",").Select(s => s.Trim()).ToArray();
                     if(file.ReadLine()=="Table:")
@@ -306,16 +310,37 @@ namespace Automath
         {
             if (!isCorrectedInisilize)
             {
-                Console.WriteLine("Ошибка: автомат не был проинициализирован.");
+                Console.WriteLine("Операция 'ProcessInputLine' не может быть выполнена: автомат не проинициализирован.");
                 return false;
             }
 
-            HashSet<string> currentStates = GetEpsilonClosure(new HashSet<string> { initialState });
-            Console.WriteLine($"Начальное ε-замыкание: {string.Join(", ", currentStates)}");
+            Console.WriteLine($"\nТекущее состояние: {initialState}");
+
+            var inputsList = alphavite.ToList();
+            var currentStates = new HashSet<string> { initialState };
+            var firstClosure = transitions.TryGetValue(initialState, out var stateTransitionsFirst);
+            var firstEps = stateTransitionsFirst[stateTransitionsFirst.Count-1];
+            if(firstEps!="~")
+            {
+                if (firstEps.Contains("{"))
+                {
+                    firstEps = firstEps.Trim('{', '}');
+                    foreach (string item in firstEps.Split(','))
+                    {
+                        if (item != "~")
+                            currentStates.Add(item);
+                    }
+                }
+                else
+                {
+                    currentStates.Add(firstEps);
+                }
+            }
 
             foreach (char symbol in word)
             {
                 string symbolStr = symbol.ToString();
+
                 if (!alphavite.Contains(symbolStr))
                 {
                     Console.WriteLine($"Ошибка: символ '{symbol}' отсутствует в алфавите.");
@@ -323,66 +348,93 @@ namespace Automath
                 }
 
                 HashSet<string> nextStates = new();
+
                 foreach (string state in currentStates)
                 {
-                    if (transitions.TryGetValue(state, out var stateTransitions))
+                    if (!transitions.TryGetValue(state, out var stateTransitions))
                     {
-                        int symbolIndex = alphavite.ToList().IndexOf(symbolStr);
-                        if (symbolIndex < stateTransitions.Count)
+                        Console.WriteLine($"Ошибка: для состояния '{state}' не определены переходы.");
+                        continue;
+                    }
+                    var epsTrans = stateTransitions[stateTransitions.Count() - 1];
+                    
+                    int symbolIndex = alphavite.ToList().IndexOf(symbolStr);
+                    if (symbolIndex >= stateTransitions.Count)
+                    {
+                        Console.WriteLine($"Ошибка: для состояния '{state}' не существует перехода по символу '{symbol}'.");
+                        continue;
+                    }
+
+                    string transition = stateTransitions[symbolIndex];
+
+                    if (transition.Contains("{"))
+                    {
+                        transition = transition.Trim('{', '}');
+                        foreach (string nextState in transition.Split(','))
                         {
-                            string transition = stateTransitions[symbolIndex];
-                            if (transition != "~")
+                            string transitionEps = transitions[state][symbolIndex];
+                            if (transitionEps != "~")
                             {
-                                foreach (string nextState in transition.Trim('{', '}').Split(','))
-                                    nextStates.Add(nextState);
+                                nextStates.UnionWith(EpsilonClosure(new HashSet<string> { transitionEps }));
                             }
+                            if (nextState != "~")
+                                nextStates.Add(nextState);
                         }
                     }
+                    else if (transition != "~")
+                    {
+                        nextStates.Add(transition);
+                    }
+
                 }
 
-                currentStates = GetEpsilonClosure(nextStates);
-                Console.WriteLine($"После символа '{symbol}': {string.Join(", ", currentStates)}");
+                if (nextStates.Count == 0)
+                {
+                    Console.WriteLine($"Ошибка: автомат застрял, некуда переходить по символу '{symbol}'.");
+                    return false;
+                }
+
+                currentStates = nextStates;
+                Console.WriteLine($"Символ '{symbol}' перевёл автомат в состояния: {string.Join(", ", currentStates)}");
+
             }
 
             if (currentStates.Overlaps(finalStates))
             {
-                Console.WriteLine($"Слово принимается автоматом. Достигнуты конечные состояния: {string.Join(", ", currentStates.Intersect(finalStates))}");
+                Console.WriteLine("Одно из достигнутых состояний входит в число финальных.");
                 return true;
             }
-            else
-            {
-                Console.WriteLine("Слово не принимается автоматом.");
-                return false;
-            }
+
+            Console.WriteLine("Ни одно из достигнутых состояний не входит в число финальных.");
+            return false;
         }
 
-        private HashSet<string> GetEpsilonClosure(HashSet<string> states)
+        private HashSet<string> EpsilonClosure(HashSet<string> states)
         {
-            Stack<string> stack = new(states);
-            HashSet<string> epsilonClosure = new(states);
+            HashSet<string> closure = new HashSet<string>(states);
+            Queue<string> queue = new Queue<string>(states);
 
-            while (stack.Count > 0)
+            while (queue.Count > 0)
             {
-                string state = stack.Pop();
-                if (transitions.TryGetValue(state, out var stateTransitions))
+                string state = queue.Dequeue();
+                if (transitions.ContainsKey(state))
                 {
-                    int epsilonIndex = alphavite.ToList().IndexOf("ε");
-                    if (epsilonIndex < stateTransitions.Count)
+                    string epsTransition = transitions[state].Last();
+
+                    if (epsTransition == "~")
+                        continue;
+
+                    foreach (string nextState in epsTransition.Split(','))
                     {
-                        string transition = stateTransitions[epsilonIndex];
-                        if (transition != "~")
+                        if (!closure.Contains(nextState))
                         {
-                            foreach (string nextState in transition.Trim('{', '}').Split(','))
-                            {
-                                if (epsilonClosure.Add(nextState)) 
-                                    stack.Push(nextState);
-                            }
+                            closure.Add(nextState);
+                            queue.Enqueue(nextState);
                         }
                     }
                 }
             }
-            return epsilonClosure;
+            return closure;
         }
-
     }
 }
