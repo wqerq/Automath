@@ -13,7 +13,7 @@ namespace Automath
         string[] alphavite;
         string initialState;
         string[] finalStates;
-        Dictionary<string,List<string>> transitions=new Dictionary<string, List<string>>();
+        Dictionary<string, List<string>> transitions;
         public bool isCorrectedInisilize=true;
 
         public Automath() { }
@@ -55,6 +55,7 @@ namespace Automath
                     finalStates= file.ReadLine().Trim('F', ':').Split(",").Select(s => s.Trim()).ToArray();
                     if(file.ReadLine()=="Table:")
                     {
+                        transitions = new Dictionary<string, List<string>>();
                         foreach (var state in states)
                         {
                             string[] transitionsElements = file.ReadLine().Split(" ");
@@ -163,7 +164,7 @@ namespace Automath
                     ProcessInputWordNKA(word);
                     break;
                 case AutomathType.NKAe:
-                    ProcessInputWordEpsilonNFA(word);
+                    ProcessInputWordEpsilonNKA(word);
                     break;
                 default:
                     Console.WriteLine("У автомата задан неизвестный тип автомата");
@@ -306,7 +307,7 @@ namespace Automath
                 return false;
             }
         }
-        private bool ProcessInputWordEpsilonNFA(string word)
+        private bool ProcessInputWordEpsilonNKA(string word)
         {
             if (!isCorrectedInisilize)
             {
@@ -314,28 +315,10 @@ namespace Automath
                 return false;
             }
 
-            Console.WriteLine($"\nТекущее состояние: {initialState}");
 
             var inputsList = alphavite.ToList();
-            var currentStates = new HashSet<string> { initialState };
-            var firstClosure = transitions.TryGetValue(initialState, out var stateTransitionsFirst);
-            var firstEps = stateTransitionsFirst[stateTransitionsFirst.Count-1];
-            if(firstEps!="~")
-            {
-                if (firstEps.Contains("{"))
-                {
-                    firstEps = firstEps.Trim('{', '}');
-                    foreach (string item in firstEps.Split(','))
-                    {
-                        if (item != "~")
-                            currentStates.Add(item);
-                    }
-                }
-                else
-                {
-                    currentStates.Add(firstEps);
-                }
-            }
+            var currentStates = EpsilonClosure(new HashSet<string> { initialState });
+            Console.WriteLine($"\nТекущее состояние: {string.Join(", ", currentStates)}");
 
             foreach (char symbol in word)
             {
@@ -369,8 +352,7 @@ namespace Automath
 
                     if (transition.Contains("{"))
                     {
-                        transition = transition.Trim('{', '}');
-                        foreach (string nextState in transition.Split(','))
+                        foreach (string nextState in transition.Trim('{', '}').Split(','))
                         {
                             string transitionEps = transitions[state][symbolIndex];
                             if (transitionEps != "~")
@@ -424,7 +406,7 @@ namespace Automath
                     if (epsTransition == "~")
                         continue;
 
-                    foreach (string nextState in epsTransition.Split(','))
+                    foreach (string nextState in epsTransition.Trim('{','}').Split(','))
                     {
                         if (!closure.Contains(nextState))
                         {
@@ -435,6 +417,142 @@ namespace Automath
                 }
             }
             return closure;
+        }
+
+        public Automath ConvertNKAtoDKA()
+        {
+            if (type != AutomathType.NKA)
+            {
+                throw new InvalidOperationException("Автомат должен быть НКА для преобразования в ДКА.");
+            }
+
+            var dkaStates = new List<HashSet<string>>();
+            var dkaTransitions = new Dictionary<string, List<string>>();
+            var stateMapping = new Dictionary<string, HashSet<string>>();
+
+            var initialSet = new HashSet<string> { initialState };
+            dkaStates.Add(initialSet);
+            stateMapping[GetStateName(initialSet)] = initialSet;
+
+            var queue = new Queue<HashSet<string>>();
+            queue.Enqueue(initialSet);
+
+            while (queue.Count > 0)
+            {
+                var currentSet = queue.Dequeue();
+                var currentStateName = GetStateName(currentSet);
+
+                if (!dkaTransitions.ContainsKey(currentStateName))
+                {
+                    dkaTransitions[currentStateName] = new List<string>();
+                }
+
+                foreach (var symbol in alphavite)
+                {
+                    var nextStates = new HashSet<string>();
+
+                    foreach (var state in currentSet)
+                    {
+                        if (transitions.TryGetValue(state, out var stateTransitions))
+                        {
+                            var index = Array.IndexOf(alphavite, symbol);
+                            if (index >= 0 && index < stateTransitions.Count)
+                            {
+                                var transition = stateTransitions[index];
+                                if (transition.Contains("{"))
+                                {
+                                    nextStates.UnionWith(transition.Trim('{', '}').Split(','));
+                                }
+                                else if (transition != "~")
+                                {
+                                    nextStates.Add(transition);
+                                }
+                            }
+                        }
+                    }
+
+                    var nextStateName = GetStateName(nextStates);
+
+                    if (!stateMapping.ContainsKey(nextStateName) && nextStates.Count > 0)
+                    {
+                        stateMapping[nextStateName] = nextStates;
+                        dkaStates.Add(nextStates);
+                        queue.Enqueue(nextStates);
+                    }
+
+                    dkaTransitions[currentStateName].Add(nextStateName);
+                }
+            }
+
+            var dkaFinalStates = stateMapping.Where(pair => pair.Value.Overlaps(finalStates))
+                                             .Select(pair => pair.Key)
+                                             .ToArray();
+
+            return new Automath
+            {
+                type = AutomathType.DKA,
+                states = dkaStates.Select(GetStateName).ToArray(),
+                alphavite = alphavite,
+                initialState = GetStateName(initialSet),
+                finalStates = dkaFinalStates,
+                transitions = dkaTransitions,
+                isCorrectedInisilize = true
+            };
+        }
+
+        public Automath ConvertNKAeToNKA()
+        {
+            if (type != AutomathType.NKAe)
+            {
+                throw new InvalidOperationException("Автомат должен быть НКА-е для преобразования в НКА.");
+            }
+
+            var nkaTransitions = new Dictionary<string, List<string>>();
+
+            foreach (var state in states)
+            {
+                nkaTransitions[state] = new List<string>(new string[alphavite.Length - 1]);
+
+                foreach (var symbol in alphavite.Take(alphavite.Length - 1)) 
+                {
+                    var symbolIndex = Array.IndexOf(alphavite, symbol);
+                    var reachableStates = EpsilonClosure(new HashSet<string> { state });
+                    var nextStates = new HashSet<string>();
+
+                    foreach (var reachableState in reachableStates)
+                    {
+                        if (transitions.TryGetValue(reachableState, out var stateTransitions))
+                        {
+                            var transition = stateTransitions[symbolIndex];
+                            if (transition.Contains("{"))
+                            {
+                                nextStates.UnionWith(transition.Trim('{', '}').Split(','));
+                            }
+                            else if (transition != "~")
+                            {
+                                nextStates.Add(transition);
+                            }
+                        }
+                    }
+
+                    nkaTransitions[state][symbolIndex] = $"{{{string.Join(",", nextStates)}}}";
+                }
+            }
+
+            return new Automath
+            {
+                type = AutomathType.NKA,
+                states = states,
+                alphavite = alphavite.Take(alphavite.Length - 1).ToArray(),
+                initialState = initialState,
+                finalStates = finalStates,
+                transitions = nkaTransitions,
+                isCorrectedInisilize = true
+            };
+        }
+        private string GetStateName(HashSet<string> stateSet)
+        {
+            return "{" + string.Join(",", stateSet.OrderBy(s => s)) + "}";
         }
     }
 }

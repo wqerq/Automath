@@ -5,10 +5,10 @@
         static void Main()
         {
             Console.WriteLine("Введите вашу задачу");
-            Console.WriteLine("Задать автомат по файлу - 1\nВвести входное слово - 2\nПоказать информацию о автомате - 3\nЗакончить работу - 4");           
+            Console.WriteLine("Задать автомат по файлу - 1\nВвести входное слово - 2\nПоказать информацию о автомате - 3\nПреобразовать НКА в ДКА - 4\nПреобразовать НКАе в НКА - 5\nЗакончить работу - 6");           
             int zadacha = 0;
             Automath automath=null;
-            while (zadacha!=4)
+            while (zadacha!=6)
             {
                 try
                 {
@@ -40,7 +40,6 @@
                             }
                             break;
                         case 3:
-                            Console.WriteLine("Задача 3");
                             if (automath != null && automath.isCorrectedInisilize)
                             {
                                 automath.ShowInfo();
@@ -51,6 +50,28 @@
                             }
                             break;
                         case 4:
+                            if (automath != null && automath.isCorrectedInisilize)
+                            {
+                                automath=automath.ConvertNKAtoDKA();
+                                Console.WriteLine("Автомат успешно преобразован");
+                            }
+                            else
+                            {
+                                Console.WriteLine("Автомат не инициализирован или инициализирован не корректно");
+                            }
+                            break;
+                        case 5:
+                            if (automath != null && automath.isCorrectedInisilize)
+                            {
+                                automath = automath.ConvertNKAeToNKA();
+                                Console.WriteLine("Автомат успешно преобразован");
+                            }
+                            else
+                            {
+                                Console.WriteLine("Автомат не инициализирован или инициализирован не корректно");
+                            }
+                            break;
+                        case 6:
                             Console.WriteLine("Работа завершена");
                             break;
                         default:
