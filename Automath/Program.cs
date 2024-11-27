@@ -1,14 +1,18 @@
-﻿namespace Automath
+﻿using System.IO;
+using Task1;
+
+namespace Automath
 {
     class Program
     {
         static void Main()
         {
             Console.WriteLine("Введите вашу задачу");
-            Console.WriteLine("Задать автомат по файлу - 1\nВвести входное слово - 2\nПоказать информацию о автомате - 3\nПреобразовать НКА в ДКА - 4\nПреобразовать НКАе в НКА - 5\nЗакончить работу - 6");           
+            Console.WriteLine("Задать автомат по файлу - 1\nВвести входное слово - 2\nПоказать информацию о автомате - 3\n" +
+                "Преобразовать НКА в ДКА - 4\nПреобразовать НКАе в НКА - 5\nЗадание 1 - 6\nЗакончить работу - 7");           
             int zadacha = 0;
             Automath automath=null;
-            while (zadacha!=6)
+            while (zadacha!=7)
             {
                 try
                 {
@@ -72,6 +76,16 @@
                             }
                             break;
                         case 6:
+                            Console.WriteLine("Введиет полный путь к файлу");
+                            LexAnalyzer lexer = new LexAnalyzer();
+                            string pathTask1 = Console.ReadLine();
+                            var lexemes = lexer.Analyze(pathTask1);
+                            foreach (var item in lexemes)
+                            {
+                                Console.WriteLine(item);
+                            }
+                            break;
+                        case 7:
                             Console.WriteLine("Работа завершена");
                             break;
                         default:

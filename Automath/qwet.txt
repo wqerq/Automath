@@ -1,13 +1,8 @@
-НКАе
-Q: 1, 2, 3, 4, 5, 6, 7
-S: a, b, c
-Q0: 1
-F: 7
-Table:
-~ ~ ~ {2,3}
-~ ~ ~ 4
-~ ~ ~ ~
-~ ~ 6 {5,6}
-~ 7 ~ 4
-7 ~ ~ ~
-~ ~ ~ ~
+if a > b then 
+    x = 10; 
+    output x 
+elseif not b < 5 then 
+    y = a * 2 
+else 
+    z = 0 
+end
