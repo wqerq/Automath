@@ -1,8 +1,1 @@
-if a > b then 
-    x = 10; 
-    output x 
-elseif not b < 5 then 
-    y = a * 2 
-else 
-    z = 0 
-end
+if a > b then x = 10 output x elseif not b < 5 then y = a * 2 else z = 0 end
