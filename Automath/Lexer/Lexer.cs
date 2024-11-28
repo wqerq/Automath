@@ -14,12 +14,13 @@ namespace Automath.Lexical
         private readonly List<string> messages = new List<string>();
         public List<int> indexes = new List<int>();
         private string originalText = "";
+        private readonly Dictionary<string, List<string>> lexemes = new Dictionary<string, List<string>>();
+        private bool useRussianLabels = false; 
 
         private enum States { S, ID, NUM, CMP, MATH, DLM, LOGIC, ERR, F }
         private States currentState;
 
-
-        private string GetLexemeType(string input)
+        private string GetLexemeTypeEnglish(string input)
         {
             if (input == "if") return "IF";
             else if (input == "then") return "THEN";
@@ -39,9 +40,26 @@ namespace Automath.Lexical
             else return "UNKNOWN";
         }
 
-
-        public List<string> Analyze(string path)
+        private string GetLexemeTypeRussian(string input)
         {
+            if (reservedWords.Contains(input)) return "Ключевое слово";
+            else if (comparisonOperators.Contains(input)) return "Операция сравнения";
+            else if (arithmeticOperators.Contains(input)) return "Арифметическая операция";
+            else if (delimiters.Contains(input)) return "Разделитель";
+            else if (input == "=") return "Присваивание";
+            else if (char.IsDigit(input[0])) return "Константа";
+            else if (char.IsLetter(input[0])) return "Идентификатор";
+            else return "Неизвестно";
+        }
+
+        private string GetLexemeType(string input)
+        {
+            return useRussianLabels ? GetLexemeTypeRussian(input) : GetLexemeTypeEnglish(input);
+        }
+
+        public List<string> Analyze(string path, bool useRussian = false)
+        {
+            useRussianLabels = useRussian;
             int i = 0, start = 0;
             string text;
             bool isOk = true;
@@ -66,6 +84,15 @@ namespace Automath.Lexical
             {
                 if (i >= text.Length - 1)
                 {
+                    if (currentState != States.S)
+                    {
+                        string message = text.Substring(start, i - start).Trim();
+                        if (!string.IsNullOrEmpty(message))
+                        {
+                            messages.Add(message);
+                            indexes.Add(start);
+                        }
+                    }
                     currentState = States.F;
                     break;
                 }
@@ -99,7 +126,16 @@ namespace Automath.Lexical
 
                     case States.ID:
                         if (!char.IsLetterOrDigit(text[i]))
+                        {
+                            string lexeme = text.Substring(start, i - start).Trim();
+                            if (reservedWords.Contains(lexeme) && lexeme == "end")
+                            {
+                                currentState = States.F; 
+                                add = false;
+                                break;
+                            }
                             currentState = States.S;
+                        }
                         else
                             add = false;
                         break;
@@ -142,8 +178,6 @@ namespace Automath.Lexical
                     {
                         messages.Add(message);
                         indexes.Add(start);
-                        Console.WriteLine($"{message} \t| {GetLexemeType(message)}"); 
-                        orderedLexemesOut.Add($"{message} {GetLexemeType(message)}");
                     }
                     start = i;
                 }
@@ -151,13 +185,39 @@ namespace Automath.Lexical
                 i++;
             }
 
-            Console.WriteLine("\nТаблица лексем:");
-            foreach (var message in messages.Distinct())
+            if (isOk)
             {
-                Console.WriteLine($"{message} \t| {GetLexemeType(message)}"); 
+                useRussianLabels = true;
+                Console.WriteLine("\nКлассификация лексем:");
+                int j = 0;
+                foreach (string item in messages)
+                {
+                    useRussianLabels = true;
+                    string type = GetLexemeType(item);
+                    if (!lexemes.ContainsKey(type))
+                    {
+                        lexemes[type] = new List<string>();
+                    }
+
+                    if (!lexemes[type].Contains(item))
+                    {
+                        lexemes[type].Add(item);
+                    }
+                    Console.WriteLine($"{item} \t| {type}");
+                    useRussianLabels = false;
+                    orderedLexemesOut.Add($"{indexes[j]} {item} {GetLexemeType(item)}");
+                    j++;
+                }
+            }
+
+            Console.WriteLine("\nТаблица лексем:");
+            foreach (var pair in lexemes)
+            {
+                Console.WriteLine($"{pair.Key}: {string.Join(", ", pair.Value)}");
             }
 
             return orderedLexemesOut;
         }
+
     }
 }

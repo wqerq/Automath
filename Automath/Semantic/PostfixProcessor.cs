@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using Automath.Elements;
-using Automath.Lexer;
+using Automath.Lexical;
 
 namespace Automath.Semantic
 {
@@ -65,8 +65,7 @@ namespace Automath.Semantic
                         entryDescription = ((ECmd)entry.Index).ToString();
                         break;
 
-                    case EEntryType.etVar:
-                        // Используем идентификаторы переменных по хэш-коду (или сохраняем имя в PostfixEntry)
+                    case EEntryType.etVar:                     
                         var varLexeme = lexemes.FirstOrDefault(l => l.Value.GetHashCode() == entry.Index);
                         entryDescription = varLexeme != null ? varLexeme.Value : $"Var#{entry.Index}";
                         break;

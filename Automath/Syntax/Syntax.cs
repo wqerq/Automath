@@ -1,10 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.IO;
-using System.Xml.Linq;
-using Automath.Lexer;
 using Automath.Semantic;
+using Automath.Lexical;
 
 namespace Automath.Syntax
 {
@@ -12,20 +10,18 @@ namespace Automath.Syntax
     {
         List<Lexeme> lexemes = new List<Lexeme>();
         private int currentIndex = 0;
-        private PostfixProcessor postfixProcessor;
+        public PostfixProcessor postfixProcessor;
         Dictionary<string, int> variables = new Dictionary<string, int>();
 
         private Lexeme CurrentLexeme => currentIndex < lexemes.Count ? lexemes[currentIndex] : null;
 
         public Syntax(List<string> list)
         {
-            string line;
             foreach (var item in list)
             {
                 var parts = item.Split();
-                lexemes.Add(new Lexeme(parts[0], parts[1]));
-
-            }         
+                lexemes.Add(new Lexeme(parts[1], parts[2], int.Parse(parts[0])));
+            }
             postfixProcessor = new PostfixProcessor();
         }
 
@@ -33,29 +29,25 @@ namespace Automath.Syntax
         {
             Console.WriteLine("Начало синтаксического анализа...");
             ParseIfStatement();
-            Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine("\nСинтаксический анализ завершен без ошибок.");
-            Console.ResetColor();
         }
 
         private void ParseIfStatement()
         {
-            Expect("IF");
-            Console.WriteLine("Анализ конструкции if...");
+            ExpectAndConsume("IF", "Анализ конструкции if...");
             ParseLogicalExpression();
-            Expect("THEN");
+            ExpectAndConsume("THEN", "Переход к анализу блока then...");
 
             postfixProcessor.WriteCmdPtr(-1);
             postfixProcessor.WriteCmd(Elements.ECmd.JZ);
 
-            Console.WriteLine("Анализ блока then...");
             ParseStatementList();
 
             while (Match("ELSEIF"))
             {
-                Console.WriteLine("Анализ блока elseif...");
+                Consume("Анализ блока elseif...");
                 ParseLogicalExpression();
-                Expect("THEN");
+                ExpectAndConsume("THEN", "Переход к анализу следующего блока...");
 
                 postfixProcessor.WriteCmdPtr(-1);
                 postfixProcessor.WriteCmd(Elements.ECmd.JZ);
@@ -64,12 +56,11 @@ namespace Automath.Syntax
 
             if (Match("ELSE"))
             {
-                Console.WriteLine("Анализ блока else...");
+                Consume("Анализ блока else...");
                 ParseStatementList();
             }
 
-            Expect("END");
-            Console.WriteLine("Конструкция if успешно проанализирована.");
+            ExpectAndConsume("END", "Конструкция if успешно завершена.");
         }
 
         private void ParseStatementList()
@@ -77,7 +68,7 @@ namespace Automath.Syntax
             do
             {
                 ParseStatement();
-            } while (Match("DLM"));
+            } while (!MatchAndConsume("DLM", "Обнаружен разделитель."));
         }
 
         private void ParseStatement()
@@ -85,13 +76,14 @@ namespace Automath.Syntax
             if (Match("ID"))
             {
                 Console.WriteLine($"Обнаружен идентификатор '{CurrentLexeme.Value}'");
-                Expect("ASGN");
+                Consume();
+                ExpectAndConsume("ASGN", "Операция присваивания.");
                 ParseArithmeticExpression();
                 postfixProcessor.WriteCmd(Elements.ECmd.SET);
             }
             else if (Match("OUTPUT"))
             {
-                Console.WriteLine("Обнаружен оператор вывода.");
+                Consume("Обнаружен оператор вывода.");
                 ParseOperand();
             }
             else if (Match("IF"))
@@ -108,7 +100,7 @@ namespace Automath.Syntax
         {
             if (Match("NOT"))
             {
-                Console.WriteLine("Обнаружена унарная операция 'not'.");
+                Consume("Обнаружена унарная операция 'not'.");
                 ParseComparisonExpression();
                 postfixProcessor.WriteCmd(Elements.ECmd.NOT);
             }
@@ -118,8 +110,8 @@ namespace Automath.Syntax
 
                 while (Match("AND") || Match("OR"))
                 {
-                    var logicOp = CurrentLexeme.Value.ToUpper();
-                    Console.WriteLine($"Обнаружена бинарная операция '{logicOp}'.");
+                    string logicOp = CurrentLexeme.Value.ToUpper();
+                    Consume($"Обнаружена бинарная операция '{logicOp}'.");
                     ParseComparisonExpression();
                     postfixProcessor.WriteCmd(logicOp == "AND" ? Elements.ECmd.AND : Elements.ECmd.OR);
                 }
@@ -132,8 +124,8 @@ namespace Automath.Syntax
 
             if (Match("REL"))
             {
-                Console.WriteLine($"Обнаружена операция сравнения '{CurrentLexeme.Value}'");
-                var comparisonOp = CurrentLexeme.Value;
+                string comparisonOp = CurrentLexeme.Value;
+                Consume($"Обнаружена операция сравнения '{comparisonOp}'");
                 ParseOperand();
 
                 switch (comparisonOp)
@@ -154,9 +146,8 @@ namespace Automath.Syntax
 
             while (Match("MATH") && (CurrentLexeme.Value == "+" || CurrentLexeme.Value == "-"))
             {
-                var op = CurrentLexeme.Value;
-                Console.WriteLine($"Обнаружена арифметическая операция '{op}'");
-                currentIndex++;
+                string op = CurrentLexeme.Value;
+                Consume($"Обнаружена арифметическая операция '{op}'");
                 ParseTerm();
                 postfixProcessor.WriteCmd(op == "+" ? Elements.ECmd.ADD : Elements.ECmd.SUB);
             }
@@ -168,9 +159,8 @@ namespace Automath.Syntax
 
             while (Match("MATH") && (CurrentLexeme.Value == "*" || CurrentLexeme.Value == "/"))
             {
-                var op = CurrentLexeme.Value;
-                Console.WriteLine($"Обнаружена арифметическая операция '{op}'");
-                currentIndex++;
+                string op = CurrentLexeme.Value;
+                Consume($"Обнаружена арифметическая операция '{op}'");
                 ParseFactor();
                 postfixProcessor.WriteCmd(op == "*" ? Elements.ECmd.MUL : Elements.ECmd.DIV);
             }
@@ -182,17 +172,19 @@ namespace Automath.Syntax
             {
                 Console.WriteLine($"Обнаружен идентификатор '{CurrentLexeme.Value}'");
                 postfixProcessor.WriteVar(CurrentLexeme.Value);
+                Consume();
             }
             else if (Match("NUM"))
             {
                 Console.WriteLine($"Обнаружена константа '{CurrentLexeme.Value}'");
                 postfixProcessor.WriteConst(int.Parse(CurrentLexeme.Value));
+                Consume();
             }
             else if (Match("LPAREN"))
             {
-                Console.WriteLine("Обнаружены скобки, анализ вложенного выражения...");
+                Consume("Обнаружены скобки, анализ вложенного выражения...");
                 ParseArithmeticExpression();
-                Expect("RPAREN");
+                ExpectAndConsume("RPAREN", "Закрывающая скобка.");
             }
             else
             {
@@ -200,6 +192,11 @@ namespace Automath.Syntax
             }
         }
 
+        private void ExpectAndConsume(string type, string message)
+        {
+            Expect(type);
+            Consume(message);
+        }
         private void Expect(string type)
         {
             if (!Match(type))
@@ -210,9 +207,20 @@ namespace Automath.Syntax
 
         private bool Match(string type)
         {
-            if (CurrentLexeme?.Type == type)
+            return CurrentLexeme?.Type == type;
+        }
+
+        private void Consume(string message = null)
+        {
+            if (message != null)
+                Console.WriteLine(message);
+            currentIndex++;
+        }
+        private bool MatchAndConsume(string type, string message = null)
+        {
+            if (Match(type))
             {
-                currentIndex++;
+                Consume(message);
                 return true;
             }
             return false;
@@ -224,11 +232,13 @@ namespace Automath.Syntax
             {
                 Console.WriteLine($"Обнаружен операнд (идентификатор) '{CurrentLexeme.Value}'");
                 postfixProcessor.WriteVar(CurrentLexeme.Value);
+                Consume();
             }
             else if (Match("NUM"))
             {
                 Console.WriteLine($"Обнаружен операнд (константа) '{CurrentLexeme.Value}'");
                 postfixProcessor.WriteConst(int.Parse(CurrentLexeme.Value));
+                Consume();
             }
             else
             {
